@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
+
 """ This is a simple python script for updating the
     DNS Custom Records in Dreamhost Nameservers using
     Dreamhost API commands.
-    
+
     Provided under the MIT License (MIT). See LICENSE for details.
 
     """
@@ -14,9 +16,7 @@ if sys.version_info.major < 3:
     syslog.syslog(syslog.LOG_ERR, msg)
     sys.exit(msg)
 
-import http.client
-import re
-import ssl
+import urllib.request as urlr
 import uuid
 import logging
 #### We only need API Key and domain to be updated.
@@ -28,12 +28,12 @@ API_Key = ""
 domain = ""
 #### Set the logging level.
 logging.basicConfig(level=logging.ERROR)
-# Set this to 1 if you want to update IPv6 record.
+# Set this to 1 or True or whatever if you want to update IPv6 record.
 CHECKIPV6=0
 
 ### START
 
-API_url = "api.dreamhost.com"
+API_url = "https://api.dreamhost.com"
 IP_Addr = ""
 IPv6_Addr = ""
 DNS_IP = ""
@@ -42,8 +42,8 @@ current_records = ""
 
 
 def rand_uuid():
-    unique_id = str(uuid.uuid4())
-    return unique_id
+    return str(uuid.uuid4())
+
 
 def get_dns_ip(records, protocol='ip'):
     """str->str"""
@@ -54,8 +54,8 @@ def get_dns_ip(records, protocol='ip'):
     for line in records:
         values = line.expandtabs().split()
         if values[2]==domain and values[3]==rec_type:
-            logging.info('Current %s record for %s is: %s', protocol, domain,  values[-2])
-            return values[-2]
+            logging.info('Current %s record for %s is: %s', protocol, domain,  values[4])
+            return values[4]
         logging.warning('No %s record found for %s', protocol, domain)
     else:
         return "NO_RECORD"
@@ -68,7 +68,7 @@ def get_dns_records():
             relevant_records.append(line)
     logging.debug('All relevant DNS Records for %s: \n %s', domain, relevant_records)
     return relevant_records
-    
+
 def del_dns_record(protocol='ip'):
     global DNS_IPV6
     global DNS_IP
@@ -76,13 +76,9 @@ def del_dns_record(protocol='ip'):
     if protocol == 'ipv6':
         rec_type = 'AAAA'
         record = DNS_IPV6
-        print(record)
-        print(DNS_IPV6)
     else:
         rec_type = 'A'
         record = DNS_IP
-        print(record)
-        print(DNS_IP)
     logging.info('The current %s record is: %s', protocol, record)
     if record == '':
         logging.error("Can't delete record, value passed is empty")
@@ -133,29 +129,17 @@ def speak_to_DH(command):
     """str->str"""
     logging.debug('Will try to speak to Dreamhost, here is what I will tell: %s', command)
     substring = make_url_string(command)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    conn = http.client.HTTPSConnection(API_url, 443, context=context)
-    conn.request("GET", substring)
-    body = conn.getresponse().read().decode('UTF-8')
+    body = urlr.urlopen(API_url+substring).read().decode('UTF-8')
     logging.debug('Here is what Dreamhost responded: %s', body)
     return body
 
 def get_host_IP_Address(protocol='ip'):
     if protocol == 'ipv6':
-        conn = http.client.HTTPConnection('checkipv6.dyndns.com')
-        conn.request("GET","/index.html")
+        u = "http://api6.ipify.org"
     else:
-        conn = http.client.HTTPConnection('checkip.dyndns.com')
-        conn.request("GET", "/index.html")
-    body = cleanhtml(conn.getresponse().read().decode("UTF-8"))
-    IP_Addr_list = body.rsplit()
-    IP_Addr = IP_Addr_list[-1]
+        u = "http://api.ipify.org"
+    IP_Addr = urlr.urlopen(u).read().decode("UTF-8")
     return IP_Addr
-
-def cleanhtml(raw_html):
-  cleanr =re.compile('<.*?>')
-  cleantext = re.sub(cleanr,'', raw_html)
-  return cleantext
 
 def make_it_so():
     global DNS_IP
@@ -176,7 +160,7 @@ def make_it_so():
         update_dns_record()
     else:
         logging.info('IP Record up-to-date.')
-    if CHECKIPV6==1:
+    if CHECKIPV6:
         DNS_IPV6 = get_dns_ip(current_records, "ipv6")
         IPv6_Addr = get_host_IP_Address('ipv6')
         if DNS_IPV6 != IPv6_Addr:
